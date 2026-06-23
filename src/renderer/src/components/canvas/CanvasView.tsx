@@ -430,6 +430,8 @@ function CanvasInner({
     [setEdges, pushHistory]
   )
 
+  const clipboardRef = useRef<{ nodes: Node<NodeData>[]; edges: Edge[] }>({ nodes: [], edges: [] })
+
   useEffect(() => {
     function isEditableTarget(el: Element | null): boolean {
       if (!el) return false
@@ -446,11 +448,40 @@ function CanvasInner({
       } else if ((key === 'z' && e.shiftKey) || key === 'y') {
         e.preventDefault()
         redo()
+      } else if (key === 'c') {
+        const selected = nodesRef.current.filter((n) => n.selected)
+        if (selected.length === 0) return
+        const selectedIds = new Set(selected.map((n) => n.id))
+        clipboardRef.current = {
+          nodes: selected,
+          edges: edgesRef.current.filter((ed) => selectedIds.has(ed.source) && selectedIds.has(ed.target))
+        }
+      } else if (key === 'v' && !locked) {
+        const { nodes: clipNodes, edges: clipEdges } = clipboardRef.current
+        if (clipNodes.length === 0) return
+        e.preventDefault()
+        const idMap = new Map<string, string>()
+        const stamp = Date.now()
+        const newNodes: Node<NodeData>[] = clipNodes.map((n, i) => {
+          const newId = `paste_${stamp}_${i}`
+          idMap.set(n.id, newId)
+          return { ...n, id: newId, position: { x: n.position.x + 30, y: n.position.y + 30 }, selected: true }
+        })
+        const newEdges: Edge[] = clipEdges.map((ed, i) => ({
+          ...ed,
+          id: `paste_edge_${stamp}_${i}`,
+          source: idMap.get(ed.source) ?? ed.source,
+          target: idMap.get(ed.target) ?? ed.target,
+          selected: false
+        }))
+        pushHistory()
+        setNodes((prev) => [...prev.map((n) => ({ ...n, selected: false })), ...newNodes])
+        if (newEdges.length > 0) setEdges((prev) => [...prev, ...newEdges])
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo, redo])
+  }, [undo, redo, locked, pushHistory, setNodes, setEdges])
 
   const openFileFor = useCallback(
     (relativeFile: string) => onOpenFile(resolveRelative(vaultRoot, relativeFile)),

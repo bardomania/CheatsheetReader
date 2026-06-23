@@ -142,6 +142,14 @@ export default function FileTree({ nodes, activeFilePath, rootPath, ...actions }
       if (!current) return
       if (current.type === 'file') actions.onSelectFile(current.path)
       else toggleExpanded(current.path)
+    } else if (e.key === 'F2') {
+      e.preventDefault()
+      const current = visible[currentIdx]
+      if (current) actions.onRename(current.path, current.type, current.name)
+    } else if (e.key === 'Delete') {
+      e.preventDefault()
+      const current = visible[currentIdx]
+      if (current) actions.onDelete(current.path, current.type)
     }
   }
 

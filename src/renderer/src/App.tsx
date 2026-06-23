@@ -66,6 +66,46 @@ export default function App() {
   const tabsRef = useRef<Tab[]>([])
   useEffect(() => { tabsRef.current = tabs }, [tabs])
 
+  // --- navigation history (back/forward across opened files) ---
+  const navHistoryRef = useRef<string[]>([])
+  const navIdxRef = useRef(-1)
+  const [navCanBack, setNavCanBack] = useState(false)
+  const [navCanForward, setNavCanForward] = useState(false)
+
+  function pushNav(path: string): void {
+    const stack = navHistoryRef.current
+    const idx = navIdxRef.current
+    if (stack[idx] === path) return
+    const newStack = [...stack.slice(0, idx + 1), path]
+    navHistoryRef.current = newStack
+    navIdxRef.current = newStack.length - 1
+    setNavCanBack(newStack.length > 1)
+    setNavCanForward(false)
+  }
+
+  function navBack(): void {
+    const idx = navIdxRef.current
+    if (idx <= 0) return
+    const newIdx = idx - 1
+    navIdxRef.current = newIdx
+    const path = navHistoryRef.current[newIdx]
+    openTabNoNav(path)
+    setNavCanBack(newIdx > 0)
+    setNavCanForward(true)
+  }
+
+  function navForward(): void {
+    const stack = navHistoryRef.current
+    const idx = navIdxRef.current
+    if (idx >= stack.length - 1) return
+    const newIdx = idx + 1
+    navIdxRef.current = newIdx
+    const path = stack[newIdx]
+    openTabNoNav(path)
+    setNavCanBack(true)
+    setNavCanForward(newIdx < stack.length - 1)
+  }
+
   // derived from active tab
   const activeTab = useMemo(() => tabs.find((t) => t.path === activeTabPath) ?? null, [tabs, activeTabPath])
   const activeFilePath = activeTab?.path ?? null
@@ -189,7 +229,8 @@ export default function App() {
     return showConfirm('You have unsaved changes. Discard them?', { confirmLabel: 'Discard', danger: true })
   }
 
-  const openTab = useCallback(async (path: string) => {
+  // Opens a tab without touching the nav history (used by Back/Forward).
+  const openTabNoNav = useCallback(async (path: string) => {
     if (tabsRef.current.some((t) => t.path === path)) {
       setActiveTabPath(path)
       return
@@ -203,6 +244,13 @@ export default function App() {
     })
     setActiveTabPath(path)
   }, [])
+
+  // Opens a tab and pushes the path onto the nav history stack.
+  const openTab = useCallback(async (path: string) => {
+    await openTabNoNav(path)
+    pushNav(path)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openTabNoNav])
 
   async function closeTab(path: string): Promise<void> {
     const currentTabs = tabsRef.current
@@ -517,6 +565,18 @@ export default function App() {
         return
       }
 
+      if (e.altKey && e.key === 'ArrowLeft') {
+        e.preventDefault()
+        navBack()
+        return
+      }
+
+      if (e.altKey && e.key === 'ArrowRight') {
+        e.preventDefault()
+        navForward()
+        return
+      }
+
       if (e.key === 'Escape') {
         if (promptState) {
           promptState.resolve(null)
@@ -534,7 +594,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleSave, rootPath, promptState, newFileDialogParent, overlay, sidebarPanel, activeFilePath, mode, findBarOpen])
+  }, [handleSave, rootPath, promptState, newFileDialogParent, overlay, sidebarPanel, activeFilePath, mode, findBarOpen, navBack, navForward])
 
   return (
     <div className="app-shell">
@@ -666,6 +726,9 @@ export default function App() {
           <main className="app-main">
             {tabs.length > 0 && (
               <div className="tab-bar" onDragOver={(e) => e.preventDefault()}>
+                <button className="btn-nav-history" onClick={navBack} disabled={!navCanBack} title="Go back (Alt+←)">‹</button>
+                <button className="btn-nav-history" onClick={navForward} disabled={!navCanForward} title="Go forward (Alt+→)">›</button>
+                <div className="tab-bar-sep" />
                 {tabs.map((tab) => {
                   const tabDirty = tab.mode === 'edit' && tab.draft !== tab.content
                   const label = tab.path.split(/[\\/]/).pop() ?? tab.path

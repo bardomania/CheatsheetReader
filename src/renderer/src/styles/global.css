@@ -410,6 +410,33 @@ input[type='radio'] {
   border-left: 2px solid var(--accent);
 }
 
+.btn-nav-history {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 8px;
+  font-size: 18px;
+  line-height: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  transition: color 0.1s;
+}
+.btn-nav-history:hover:not(:disabled) {
+  color: var(--text);
+}
+.btn-nav-history:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.tab-bar-sep {
+  width: 1px;
+  background: var(--border);
+  margin: 6px 0;
+  flex-shrink: 0;
+}
+
 .context-menu-divider {
   height: 1px;
   background: var(--border-soft);

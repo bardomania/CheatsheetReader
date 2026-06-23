@@ -31,6 +31,30 @@ import type { FilePathIndex } from '../../lib/wikiLinks'
 import { CanvasRenderContext, type CanvasRenderContextValue } from './canvasRenderContext'
 import CanvasFilePreview from './CanvasFilePreview'
 
+// React uses event delegation — synthetic onPointerDown fires at the React root,
+// AFTER React Flow's native listener on .react-flow__node has already called
+// preventDefault(). We need a native listener on the text element itself so it
+// fires first in bubble order and stops propagation before RF sees the event.
+function CanvasTextContent({ children }: { children: React.ReactNode }): React.ReactElement {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const stop = (e: Event): void => { e.stopPropagation() }
+    el.addEventListener('pointerdown', stop)
+    el.addEventListener('mousedown', stop)
+    return () => {
+      el.removeEventListener('pointerdown', stop)
+      el.removeEventListener('mousedown', stop)
+    }
+  }, [])
+  return (
+    <div ref={ref} className="canvas-node-text markdown-preview nodrag nopan">
+      {children}
+    </div>
+  )
+}
+
 // JSON Canvas 1.0 (jsoncanvas.org) — fields beyond what we actively render
 // (subpath, label/background/backgroundStyle on groups, edge fromEnd/toEnd/
 // color/label) are preserved through load->save via the raw-merge in the
@@ -162,7 +186,7 @@ function TextNode({ data, selected }: NodeProps & { data: NodeData }): React.Rea
 
   return (
     <div
-      className={`canvas-node canvas-node-text-shell${selected ? '' : ' nodrag'}${locked ? ' nopan' : ''}`}
+      className={`canvas-node canvas-node-text-shell${locked ? ' nopan' : ''}`}
       style={{ '--node-accent': resolveCanvasColor(data.color) } as React.CSSProperties}
       onDoubleClick={(e) => { e.stopPropagation(); setEditing(true) }}
     >
@@ -179,17 +203,9 @@ function TextNode({ data, selected }: NodeProps & { data: NodeData }): React.Rea
           }}
         />
       ) : rendered ? (
-        // React Flow's node drag handler calls preventDefault() on pointerdown
-        // (before checking for .nodrag) which blocks browser text selection.
-        // stopPropagation on both pointer and mouse events prevents React Flow
-        // from seeing the event at all, so the browser can select text normally.
-        <div
-          className="canvas-node-text markdown-preview nodrag nopan"
-          onPointerDown={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
+        <CanvasTextContent>
           {rendered}
-        </div>
+        </CanvasTextContent>
       ) : selected && !locked ? (
         <div className="canvas-node-text canvas-node-text-placeholder nopan">Empty note — double-click to edit</div>
       ) : (
@@ -204,7 +220,7 @@ function FileNode({ data, selected }: NodeProps & { data: NodeData }): React.Rea
   const locked = ctx?.locked ?? true
   return (
     <div
-      className={`canvas-node canvas-node-file-shell${selected ? '' : ' nodrag'}`}
+      className="canvas-node canvas-node-file-shell"
       style={{ '--node-accent': resolveCanvasColor(data.color) } as React.CSSProperties}
       onDoubleClick={(e) => { e.stopPropagation(); data.onOpenFile?.() }}
     >
@@ -220,7 +236,7 @@ function LinkNode({ data, selected }: NodeProps & { data: NodeData }): React.Rea
   const locked = ctx?.locked ?? true
   return (
     <div
-      className={`canvas-node canvas-node-link-shell${selected ? '' : ' nodrag'}`}
+      className="canvas-node canvas-node-link-shell"
       style={{ '--node-accent': resolveCanvasColor(data.color) } as React.CSSProperties}
     >
       <NodeResizer isVisible={selected && !locked} minWidth={140} minHeight={50} />
@@ -239,7 +255,7 @@ function GroupNode({ data, selected }: NodeProps & { data: NodeData }): React.Re
   const locked = ctx?.locked ?? true
   return (
     <div
-      className={`canvas-group-shell${selected ? '' : ' nodrag'}`}
+      className="canvas-group-shell"
       style={{ '--node-accent': resolveCanvasColor(data.color) } as React.CSSProperties}
       onDoubleClick={(e) => { e.stopPropagation(); setEditing(true) }}
     >
@@ -305,6 +321,7 @@ function CanvasInner({
   const { screenToFlowPosition, fitView } = useReactFlow()
   const hasLoaded = useRef(false)
   const skipNextSave = useRef(true)
+  const lastSavedContent = useRef<string | null>(null)
   const [parseError, setParseError] = useState(false)
   const [locked, setLocked] = useState(true)
   const tree = useVaultStore((s) => s.tree)
@@ -468,6 +485,8 @@ function CanvasInner({
   )
 
   useEffect(() => {
+    if (content === lastSavedContent.current) return
+
     let parsed: CanvasData
     try {
       const raw = JSON.parse(content)
@@ -486,7 +505,7 @@ function CanvasInner({
       type: n.type === 'group' ? CANVAS_GROUP_TYPE : n.type,
       position: { x: n.x, y: n.y },
       style: { width: n.width, height: n.height },
-      zIndex: n.type === 'group' ? -1 : undefined,
+      zIndex: n.type === 'group' ? -1 : 1,
       data:
         n.type === 'file'
           ? { ...buildFileNodeData(n.id, n.file as string), color: n.color }
@@ -558,7 +577,9 @@ function CanvasInner({
       rawNodesById.current = new Map(outNodes.map((n) => [n.id, n]))
       rawEdgesById.current = new Map(outEdges.map((e) => [e.id, e]))
 
-      onSave(JSON.stringify({ nodes: outNodes, edges: outEdges }, null, 2))
+      const json = JSON.stringify({ nodes: outNodes, edges: outEdges }, null, 2)
+      lastSavedContent.current = json
+      onSave(json)
     }, 500)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -577,6 +598,7 @@ function CanvasInner({
       type: 'text',
       position: { x: center.x - 110, y: center.y - 50 },
       style: { width: 220, height: 100 },
+      zIndex: 1,
       selected: true,
       data: { text: 'New note', onCommitText: (text: string) => commitTextFor(id, text) }
     }
@@ -594,6 +616,7 @@ function CanvasInner({
       type: 'file',
       position: { x: center.x - 110, y: center.y - 40 },
       style: { width: 220, height: 80 },
+      zIndex: 1,
       selected: true,
       data: buildFileNodeData(id, file)
     }
@@ -611,6 +634,7 @@ function CanvasInner({
       type: 'link',
       position: { x: center.x - 110, y: center.y - 30 },
       style: { width: 220, height: 60 },
+      zIndex: 1,
       selected: true,
       data: { url }
     }

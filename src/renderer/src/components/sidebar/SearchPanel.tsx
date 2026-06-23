@@ -41,10 +41,7 @@ export default function SearchPanel({ rootPath, onOpenFile, onClose }: SearchPan
             type="radio"
             name="search-mode"
             checked={mode === 'all'}
-            onChange={() => {
-              setMode('all')
-              runSearch(query, 'all')
-            }}
+            onChange={() => { setMode('all'); runSearch(query, 'all') }}
           />
           All text
         </label>
@@ -53,10 +50,7 @@ export default function SearchPanel({ rootPath, onOpenFile, onClose }: SearchPan
             type="radio"
             name="search-mode"
             checked={mode === 'code'}
-            onChange={() => {
-              setMode('code')
-              runSearch(query, 'code')
-            }}
+            onChange={() => { setMode('code'); runSearch(query, 'code') }}
           />
           Code blocks only
         </label>
@@ -64,7 +58,8 @@ export default function SearchPanel({ rootPath, onOpenFile, onClose }: SearchPan
       <ul className="search-results">
         {results.map((r) => (
           <li key={r.filePath} className="search-result-item" onClick={() => onOpenFile(r.filePath)}>
-            {r.name}
+            <span className="search-result-name">{r.name}</span>
+            {r.snippet && <span className="search-result-snippet">{r.snippet}</span>}
           </li>
         ))}
       </ul>

@@ -46,6 +46,24 @@ async function collectDocs(rootPath: string): Promise<VaultDoc[]> {
 export interface SearchResult {
   filePath: string
   name: string
+  snippet?: string
+}
+
+function extractSnippet(content: string, query: string): string {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const lower = content.toLowerCase()
+  let bestIdx = -1
+  for (const word of words) {
+    const idx = lower.indexOf(word)
+    if (idx !== -1 && (bestIdx === -1 || idx < bestIdx)) bestIdx = idx
+  }
+  if (bestIdx === -1) return ''
+  const start = Math.max(0, bestIdx - 30)
+  const end = Math.min(content.length, start + 160)
+  let snippet = content.slice(start, end).replace(/\n+/g, ' ').trim()
+  if (start > 0) snippet = '…' + snippet
+  if (end < content.length) snippet += '…'
+  return snippet
 }
 
 export async function searchVault(
@@ -54,6 +72,7 @@ export async function searchVault(
   mode: 'all' | 'code'
 ): Promise<SearchResult[]> {
   const docs = await collectDocs(rootPath)
+  const docsById = new Map(docs.map((d) => [d.id, d]))
 
   const miniSearch = new MiniSearch<VaultDoc>({
     fields: ['name', 'content', 'code'],
@@ -68,5 +87,13 @@ export async function searchVault(
     fuzzy: 0.2
   })
 
-  return results.map((r) => ({ filePath: String(r.id), name: r.name as string }))
+  return results.map((r) => {
+    const doc = docsById.get(String(r.id))
+    const source = mode === 'code' ? (doc?.code ?? '') : (doc?.content ?? '')
+    return {
+      filePath: String(r.id),
+      name: r.name as string,
+      snippet: extractSnippet(source, query)
+    }
+  })
 }

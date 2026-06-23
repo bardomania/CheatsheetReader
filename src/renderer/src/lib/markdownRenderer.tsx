@@ -13,6 +13,7 @@ import { resolveEmbedTarget, type FilePathIndex } from './wikiLinks'
 import { remarkCaptureRawCode } from './remarkCaptureRawCode'
 import { remarkResolveVariables } from './remarkResolveVariables'
 import { remarkTaskListLines } from './remarkTaskListLines'
+import { remarkCallout, calloutIcon } from './remarkCallout'
 import PreBlock from '../components/editor/CodeBlock'
 import WikiEmbed from '../components/editor/WikiEmbed'
 
@@ -76,6 +77,7 @@ export function renderMarkdown({
 
   const processor = unified()
     .use(remarkParse)
+    .use(remarkCallout)  // before remarkGfm so [!type] blockquotes are claimed first
     .use(remarkGfm)
     .use(remarkTaskListLines)
     .use(remarkWikiLink, { wikiLinkIndex, embedIndex, vaultRoot, fromFilePath: filePath })
@@ -100,6 +102,33 @@ export function renderMarkdown({
             title: node.funcName ? `{{${node.funcName}(${node.varName})}}` : `{{${node.varName}}}`
           },
           children: [{ type: 'text', value: node.value }]
+        }),
+        callout: (state: any, node: any) => ({
+          type: 'element',
+          tagName: 'div',
+          properties: { className: ['callout', `callout-${node.calloutType}`] },
+          children: [
+            {
+              type: 'element',
+              tagName: 'div',
+              properties: { className: ['callout-title'] },
+              children: [
+                {
+                  type: 'element',
+                  tagName: 'span',
+                  properties: { className: ['callout-icon'], 'aria-hidden': 'true' },
+                  children: [{ type: 'text', value: calloutIcon(node.calloutType) }]
+                },
+                { type: 'text', value: node.calloutTitle }
+              ]
+            },
+            {
+              type: 'element',
+              tagName: 'div',
+              properties: { className: ['callout-body'] },
+              children: state.all(node)
+            }
+          ]
         })
       }
     })

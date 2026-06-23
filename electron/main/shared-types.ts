@@ -133,6 +133,7 @@ export interface ExposureStatus {
 export interface SearchResult {
   filePath: string
   name: string
+  snippet?: string
 }
 
 export interface TrashManifest {

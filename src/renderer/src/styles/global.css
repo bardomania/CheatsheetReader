@@ -280,12 +280,26 @@ input[type='radio'] {
 }
 
 .app-sidebar {
-  width: 286px;
   flex-shrink: 0;
-  border-right: 1px solid var(--border-soft);
+  border-right: none;
   overflow-y: auto;
   padding: 8px;
   background: var(--bg-deep);
+  min-width: 150px;
+  max-width: 600px;
+}
+
+.sidebar-resize-handle {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: var(--border-soft);
+  transition: background 0.15s;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: var(--accent-dim);
 }
 
 .app-main {
@@ -390,6 +404,16 @@ input[type='radio'] {
   background: rgba(255,255,255,0.1);
   opacity: 1 !important;
   color: var(--text);
+}
+
+.tab.tab-drag-over {
+  border-left: 2px solid var(--accent);
+}
+
+.context-menu-divider {
+  height: 1px;
+  background: var(--border-soft);
+  margin: 3px 0;
 }
 
 .find-bar {
@@ -539,6 +563,69 @@ input[type='radio'] {
   color: #fff;
 }
 
+.file-tree-folder-label.drag-over,
+.file-tree-file.drag-over {
+  background: var(--accent-bg);
+  outline: 1px solid var(--accent-dim);
+  outline-offset: -1px;
+}
+
+.file-tree-root.drag-over > .file-tree {
+  outline: 1px dashed var(--accent-dim);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.file-tree-folder-label.keyboard-focused,
+.file-tree-file.keyboard-focused {
+  outline: 1px solid var(--accent-dim);
+  outline-offset: -1px;
+  background: var(--panel-hover);
+}
+
+.file-tree-root:focus {
+  outline: none;
+}
+
+.search-result-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.search-result-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.search-result-snippet {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+
+.new-file-type-toggle {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.new-file-type-option {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.new-file-type-option.active {
+  color: var(--text-bright);
+}
+
 /* ============================================================
    Markdown preview typography
    ============================================================ */
@@ -631,6 +718,92 @@ input[type='radio'] {
 .markdown-preview blockquote > :last-child {
   margin-bottom: 0;
 }
+
+/* Obsidian-style callouts ------------------------------------------ */
+.callout {
+  --callout-color: var(--text-dim);
+  --callout-border: var(--border-strong);
+  --callout-title-bg: rgba(255,255,255,0.04);
+  border: 1px solid var(--callout-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 14px 0;
+}
+
+.callout-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  background: var(--callout-title-bg);
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--callout-color);
+  letter-spacing: 0.01em;
+}
+
+.callout-icon {
+  font-style: normal;
+  font-size: 1em;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.callout-body {
+  padding: 8px 12px;
+  font-size: 0.9em;
+}
+.callout-body > :first-child { margin-top: 0; }
+.callout-body > :last-child  { margin-bottom: 0; }
+
+/* type variants */
+.callout-note, .callout-info {
+  --callout-color: #4a90d9;
+  --callout-border: rgba(74,144,217,.35);
+  --callout-title-bg: rgba(74,144,217,.1);
+}
+.callout-tip, .callout-hint, .callout-important {
+  --callout-color: #50b86c;
+  --callout-border: rgba(80,184,108,.35);
+  --callout-title-bg: rgba(80,184,108,.1);
+}
+.callout-warning, .callout-caution, .callout-attention {
+  --callout-color: #e0a93f;
+  --callout-border: rgba(224,169,63,.35);
+  --callout-title-bg: rgba(224,169,63,.1);
+}
+.callout-danger, .callout-error {
+  --callout-color: #e06c6c;
+  --callout-border: rgba(224,108,108,.35);
+  --callout-title-bg: rgba(224,108,108,.1);
+}
+.callout-success, .callout-check, .callout-done {
+  --callout-color: #6cc644;
+  --callout-border: rgba(108,198,68,.35);
+  --callout-title-bg: rgba(108,198,68,.1);
+}
+.callout-question, .callout-help, .callout-faq {
+  --callout-color: #a23fe0;
+  --callout-border: rgba(162,63,224,.35);
+  --callout-title-bg: rgba(162,63,224,.1);
+}
+.callout-quote, .callout-cite {
+  --callout-color: var(--text-dim);
+  --callout-border: var(--border-strong);
+  --callout-title-bg: rgba(255,255,255,0.04);
+}
+.callout-abstract, .callout-summary, .callout-tldr {
+  --callout-color: #3fc6e0;
+  --callout-border: rgba(63,198,224,.35);
+  --callout-title-bg: rgba(63,198,224,.1);
+}
+.callout-failure, .callout-fail, .callout-missing,
+.callout-bug {
+  --callout-color: #e06c6c;
+  --callout-border: rgba(224,108,108,.35);
+  --callout-title-bg: rgba(224,108,108,.1);
+}
+/* ------------------------------------------------------------------ */
 
 .markdown-preview hr {
   border: none;
@@ -2071,6 +2244,12 @@ input[type='radio'] {
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
+/* Text nodes don't clip images so overflow can be visible,
+   which lets var-resolved / var-missing tooltips escape the card. */
+.canvas-node.canvas-node-text-shell {
+  overflow: visible;
+}
+
 .react-flow__node.selected .canvas-node {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-dim), var(--shadow-lg);
@@ -2152,6 +2331,32 @@ input[type='radio'] {
 
 .canvas-node-text.markdown-preview > :first-child {
   margin-top: 0;
+}
+
+/* ReactFlow wraps each node in .react-flow__node-<type>. Allow overflow so
+   var-resolved / var-missing absolute-positioned tooltips can escape the card. */
+.react-flow__node-text {
+  overflow: visible;
+}
+
+/* Scoped rules for variable highlights inside canvas text nodes.
+   Higher specificity (2 classes) ensures these are never overridden by
+   anything that resets borders inside the canvas node tree. */
+.canvas-node-text .var-resolved {
+  border-bottom: 1px dotted var(--accent-dim);
+  cursor: help;
+  position: relative;
+}
+.canvas-node-text .var-missing {
+  background: var(--warn-bg);
+  border-bottom: 1px dashed var(--warn);
+  border-radius: 2px;
+  padding: 0 2px;
+  position: relative;
+}
+.canvas-node-text .var-resolved::after,
+.canvas-node-text .var-missing::after {
+  z-index: 1000;
 }
 
 .canvas-node-file {

@@ -69,13 +69,15 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-function withMdExtension(name: string): string {
-  return name.toLowerCase().endsWith('.md') ? name : `${name}.md`
+function withFileExtension(name: string): string {
+  if (/\.(md|canvas)$/i.test(name)) return name
+  return `${name}.md`
 }
 
 export async function createFile(parentDirPath: string, name: string, content = ''): Promise<string> {
-  const filePath = join(parentDirPath, withMdExtension(name))
-  if (await pathExists(filePath)) throw new Error(`"${withMdExtension(name)}" already exists`)
+  const fileName = withFileExtension(name)
+  const filePath = join(parentDirPath, fileName)
+  if (await pathExists(filePath)) throw new Error(`"${fileName}" already exists`)
   await fs.writeFile(filePath, content, 'utf-8')
   return filePath
 }
@@ -89,7 +91,7 @@ export async function createFolder(parentDirPath: string, name: string): Promise
 
 export async function renamePath(oldPath: string, newName: string, type: 'file' | 'folder'): Promise<string> {
   const dir = dirname(oldPath)
-  const finalName = type === 'file' ? withMdExtension(newName) : newName
+  const finalName = type === 'file' ? withFileExtension(newName) : newName
   const newPath = join(dir, finalName)
   if (newPath !== oldPath && (await pathExists(newPath))) {
     throw new Error(`"${finalName}" already exists`)

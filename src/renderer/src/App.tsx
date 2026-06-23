@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { api } from './lib/ipc'
 import { useVaultStore } from './state/vaultStore'
 import { useVariablesStore } from './state/variablesStore'
@@ -94,6 +94,10 @@ export default function App() {
   const [newFileDialogParent, setNewFileDialogParent] = useState<string | null>(null)
   const [folderFlagTarget, setFolderFlagTarget] = useState<{ path: string; name: string } | null>(null)
   const [findBarOpen, setFindBarOpen] = useState(false)
+  const [sidebarWidth, setSidebarWidth] = useState(286)
+  const [dragTabPath, setDragTabPath] = useState<string | null>(null)
+  const [dragOverTabPath, setDragOverTabPath] = useState<string | null>(null)
+  const [tabContextMenu, setTabContextMenu] = useState<{ x: number; y: number; path: string } | null>(null)
   const [confirmState, setConfirmState] = useState<{
     message: string
     confirmLabel: string
@@ -109,6 +113,21 @@ export default function App() {
     return new Promise((resolve) =>
       setConfirmState({ message, confirmLabel: options?.confirmLabel ?? 'OK', danger: options?.danger ?? false, resolve })
     )
+  }
+
+  function handleSidebarResizeMouseDown(e: ReactMouseEvent): void {
+    e.preventDefault()
+    const startX = e.clientX
+    const startWidth = sidebarWidth
+    function onMouseMove(ev: globalThis.MouseEvent): void {
+      setSidebarWidth(Math.max(150, Math.min(600, startWidth + ev.clientX - startX)))
+    }
+    function onMouseUp(): void {
+      window.removeEventListener('mousemove', onMouseMove)
+      window.removeEventListener('mouseup', onMouseUp)
+    }
+    window.addEventListener('mousemove', onMouseMove)
+    window.addEventListener('mouseup', onMouseUp)
   }
 
   const wikiLinkIndex = useMemo(() => buildWikiLinkIndex(tree), [tree])
@@ -309,8 +328,10 @@ export default function App() {
     const parentDirPath = newFileDialogParent
     setNewFileDialogParent(null)
     try {
-      const content = await api().templates.getContent(template)
-      const filePath = await api().vault.createFile(parentDirPath, name, content)
+      const isCanvas = template === '__canvas__'
+      const fileName = isCanvas ? (name.toLowerCase().endsWith('.canvas') ? name : `${name}.canvas`) : name
+      const content = isCanvas ? '{"nodes":[],"edges":[]}' : await api().templates.getContent(template)
+      const filePath = await api().vault.createFile(parentDirPath, fileName, content)
       await refreshTree()
       await openTab(filePath)
     } catch (err) {
@@ -457,6 +478,24 @@ export default function App() {
         return
       }
 
+      if (mod && e.key === 'w') {
+        e.preventDefault()
+        if (activeTabPath) closeTab(activeTabPath)
+        return
+      }
+
+      if (mod && e.key === 'Tab') {
+        e.preventDefault()
+        const currentTabs = tabsRef.current
+        if (currentTabs.length < 2) return
+        const idx = currentTabs.findIndex((t) => t.path === activeTabPath)
+        const next = e.shiftKey
+          ? currentTabs[(idx - 1 + currentTabs.length) % currentTabs.length]
+          : currentTabs[(idx + 1) % currentTabs.length]
+        setActiveTabPath(next.path)
+        return
+      }
+
       if (mod && e.key.toLowerCase() === 'f') {
         const activeEl = document.activeElement
         const inEditor = activeEl instanceof Element && !!activeEl.closest('.cm-editor')
@@ -591,7 +630,7 @@ export default function App() {
         />
       ) : (
         <div className="app-body">
-          <aside className="app-sidebar">
+          <aside className="app-sidebar" style={{ width: sidebarWidth }}>
             {!rootPath ? (
               <p className="empty-hint">Open a folder to start browsing your cheatsheets.</p>
             ) : sidebarPanel === 'trash' ? (
@@ -623,17 +662,41 @@ export default function App() {
               />
             )}
           </aside>
+          <div className="sidebar-resize-handle" onMouseDown={handleSidebarResizeMouseDown} />
           <main className="app-main">
             {tabs.length > 0 && (
-              <div className="tab-bar">
+              <div className="tab-bar" onDragOver={(e) => e.preventDefault()}>
                 {tabs.map((tab) => {
                   const tabDirty = tab.mode === 'edit' && tab.draft !== tab.content
                   const label = tab.path.split(/[\\/]/).pop() ?? tab.path
+                  const isDragOver = dragOverTabPath === tab.path && dragTabPath !== tab.path
                   return (
                     <div
                       key={tab.path}
-                      className={`tab${tab.path === activeTabPath ? ' tab-active' : ''}`}
+                      className={`tab${tab.path === activeTabPath ? ' tab-active' : ''}${isDragOver ? ' tab-drag-over' : ''}`}
+                      draggable
                       onClick={() => setActiveTabPath(tab.path)}
+                      onMouseDown={(e) => { if (e.button === 1) { e.preventDefault(); closeTab(tab.path) } }}
+                      onContextMenu={(e) => { e.preventDefault(); setTabContextMenu({ x: e.clientX, y: e.clientY, path: tab.path }) }}
+                      onDragStart={() => setDragTabPath(tab.path)}
+                      onDragEnter={(e) => { e.preventDefault(); setDragOverTabPath(tab.path) }}
+                      onDragLeave={() => setDragOverTabPath(null)}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        if (dragTabPath && dragTabPath !== tab.path) {
+                          setTabs((prev) => {
+                            const next = [...prev]
+                            const fromIdx = next.findIndex((t) => t.path === dragTabPath)
+                            const toIdx = next.findIndex((t) => t.path === tab.path)
+                            const [moved] = next.splice(fromIdx, 1)
+                            next.splice(toIdx, 0, moved)
+                            return next
+                          })
+                        }
+                        setDragTabPath(null)
+                        setDragOverTabPath(null)
+                      }}
+                      onDragEnd={() => { setDragTabPath(null); setDragOverTabPath(null) }}
                       title={tab.path}
                     >
                       <span className="tab-label">{label}</span>
@@ -716,6 +779,24 @@ export default function App() {
             <VariablesPanel />
           </aside>
         </div>
+      )}
+
+      {tabContextMenu && (
+        <>
+          <div className="context-menu-backdrop" onClick={() => setTabContextMenu(null)} onContextMenu={(e) => e.preventDefault()} />
+          <div className="context-menu" style={{ top: tabContextMenu.y, left: tabContextMenu.x }}>
+            <button className="context-menu-item" onClick={() => { closeTab(tabContextMenu.path); setTabContextMenu(null) }}>Close tab</button>
+            <button className="context-menu-item" onClick={() => {
+              const path = tabContextMenu.path
+              setTabs((prev) => prev.filter((t) => t.path === path))
+              setActiveTabPath(path)
+              setTabContextMenu(null)
+            }}>Close others</button>
+            <button className="context-menu-item" onClick={() => { setTabs([]); setActiveTabPath(null); setTabContextMenu(null) }}>Close all</button>
+            <div className="context-menu-divider" />
+            <button className="context-menu-item" onClick={() => { navigator.clipboard.writeText(tabContextMenu.path); setTabContextMenu(null) }}>Copy path</button>
+          </div>
+        </>
       )}
 
       {newFileDialogParent !== null && (

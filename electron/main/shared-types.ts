@@ -10,7 +10,8 @@ export const IPC = {
     softDelete: 'vault:softDelete',
     saveImage: 'vault:saveImage',
     getLastVaultPath: 'vault:getLastVaultPath',
-    setLastVaultPath: 'vault:setLastVaultPath'
+    setLastVaultPath: 'vault:setLastVaultPath',
+    updateRefs: 'vault:updateRefs'
   },
   trash: {
     list: 'trash:list',
@@ -163,6 +164,7 @@ export interface ElectronApi {
     ) => Promise<SaveImageResult>
     getLastVaultPath: () => Promise<string | null>
     setLastVaultPath: (vaultPath: string | null) => Promise<void>
+    updateRefs: (vaultRoot: string, oldPath: string, newPath: string) => Promise<string[]>
   }
   trash: {
     list: (rootPath: string) => Promise<TrashManifest[]>

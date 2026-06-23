@@ -398,6 +398,24 @@ export default function App() {
     }
   }
 
+  async function reloadChangedTabs(changedPaths: string[]): Promise<void> {
+    if (changedPaths.length === 0) return
+    const changedSet = new Set(changedPaths.map((p) => p.replace(/\\/g, '/').toLowerCase()))
+    const toReload = tabsRef.current.filter((t) => {
+      const key = t.path.replace(/\\/g, '/').toLowerCase()
+      const isDirty = t.mode === 'edit' && t.draft !== t.content
+      return changedSet.has(key) && !isDirty
+    })
+    await Promise.all(
+      toReload.map(async (tab) => {
+        try {
+          const content = await api().file.read(tab.path)
+          setTabs((prev) => prev.map((t) => (t.path === tab.path ? { ...t, content, draft: content } : t)))
+        } catch { /* file might not exist */ }
+      })
+    )
+  }
+
   async function handleRename(path: string, type: 'file' | 'folder', currentName: string): Promise<void> {
     const newName = await showPrompt('Rename to:', currentName)
     if (!newName || newName === currentName) return
@@ -406,6 +424,10 @@ export default function App() {
       await refreshTree()
       setTabs((prev) => prev.map((t) => (t.path === path ? { ...t, path: newPath } : t)))
       if (activeTabPath === path) setActiveTabPath(newPath)
+      if (rootPath && type === 'file') {
+        const changedPaths = await api().vault.updateRefs(rootPath, path, newPath)
+        await reloadChangedTabs(changedPaths)
+      }
     } catch (err) {
       window.alert((err as Error).message)
     }
@@ -441,6 +463,10 @@ export default function App() {
       await refreshTree()
       setTabs((prev) => prev.map((t) => (t.path === sourcePath ? { ...t, path: newPath } : t)))
       if (activeTabPath === sourcePath) setActiveTabPath(newPath)
+      if (rootPath) {
+        const changedPaths = await api().vault.updateRefs(rootPath, sourcePath, newPath)
+        await reloadChangedTabs(changedPaths)
+      }
     } catch (err) {
       window.alert((err as Error).message)
     }

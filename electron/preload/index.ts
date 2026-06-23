@@ -15,7 +15,9 @@ const api: ElectronApi = {
     saveImage: (noteFilePath, base64Data, ext, vaultRoot, settings) =>
       ipcRenderer.invoke(IPC.vault.saveImage, noteFilePath, base64Data, ext, vaultRoot, settings),
     getLastVaultPath: () => ipcRenderer.invoke(IPC.vault.getLastVaultPath),
-    setLastVaultPath: (vaultPath) => ipcRenderer.invoke(IPC.vault.setLastVaultPath, vaultPath)
+    setLastVaultPath: (vaultPath) => ipcRenderer.invoke(IPC.vault.setLastVaultPath, vaultPath),
+    updateRefs: (vaultRoot, oldPath, newPath) =>
+      ipcRenderer.invoke(IPC.vault.updateRefs, vaultRoot, oldPath, newPath)
   },
   trash: {
     list: (rootPath) => ipcRenderer.invoke(IPC.trash.list, rootPath),

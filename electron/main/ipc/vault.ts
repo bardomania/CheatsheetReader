@@ -14,6 +14,7 @@ import {
   duplicateFile,
   saveImage
 } from '../services/vaultService'
+import { updateRefs } from '../services/refUpdateService'
 import { softDelete, listTrash, restoreFromTrash, purgeFromTrash } from '../services/trashService'
 import { listTemplates, getTemplateContent } from '../services/templateService'
 import { searchVault } from '../services/searchService'
@@ -118,6 +119,13 @@ export function registerVaultIpc(): void {
 
   ipcMain.handle(IPC.vault.setLastVaultPath, async (_event, vaultPath: string | null) => {
     await setLastVaultPath(vaultPath)
+  })
+
+  ipcMain.handle(IPC.vault.updateRefs, async (_event, vaultRoot: string, oldPath: string, newPath: string) => {
+    assertIsActiveRoot(vaultRoot)
+    assertWithinVault(newPath)
+    const { changedFiles } = await updateRefs(vaultRoot, oldPath, newPath)
+    return changedFiles
   })
 
   ipcMain.handle(IPC.trash.list, async (_event, rootPath: string) => {

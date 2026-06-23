@@ -1,0 +1,70 @@
+{
+  "name": "markdownreader",
+  "version": "0.1.0",
+  "description": "Local Markdown cheatsheet manager with a runtime variables/functions layer",
+  "main": "./out/main/index.js",
+  "author": "",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "build:win": "electron-vite build && electron-builder --win",
+    "preview": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json"
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language": "^6.12.3",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/view": "^6.43.1",
+    "@lezer/markdown": "^1.6.4",
+    "@types/d3-hierarchy": "^3.1.7",
+    "@xyflow/react": "^12.11.0",
+    "bcryptjs": "^3.0.3",
+    "codemirror": "^6.0.2",
+    "d3-hierarchy": "^3.1.2",
+    "fastify": "^5.8.5",
+    "highlight.js": "^11.11.1",
+    "mdast-util-find-and-replace": "^3.0.2",
+    "minisearch": "^7.2.0",
+    "rehype-highlight": "^7.0.2",
+    "rehype-react": "^8.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.2",
+    "unified": "^11.0.5",
+    "unist-util-visit": "^5.1.0",
+    "zustand": "^5.0.3"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.2",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^5.0.0",
+    "playwright-core": "^1.61.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7"
+  },
+  "build": {
+    "appId": "com.markdownreader.app",
+    "productName": "Cheatsheet Manager",
+    "icon": "build/icon.png",
+    "files": [
+      "out/**/*"
+    ],
+    "win": {
+      "icon": "build/icon.png"
+    },
+    "linux": {
+      "icon": "build/icon.png"
+    }
+  }
+}

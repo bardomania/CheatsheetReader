@@ -23,6 +23,7 @@ function extractCodeBlocks(markdown: string): string {
 
 async function collectDocs(rootPath: string): Promise<VaultDoc[]> {
   const docs: VaultDoc[] = []
+  const cheatsheetPath = join(rootPath, 'CheatSheet')
 
   async function visit(dirPath: string): Promise<void> {
     const entries = await fs.readdir(dirPath, { withFileTypes: true })
@@ -39,7 +40,12 @@ async function collectDocs(rootPath: string): Promise<VaultDoc[]> {
     }
   }
 
-  await visit(rootPath)
+  try {
+    await fs.access(cheatsheetPath)
+    await visit(cheatsheetPath)
+  } catch {
+    await visit(rootPath)
+  }
   return docs
 }
 
@@ -50,7 +56,10 @@ export interface SearchResult {
 }
 
 function extractSnippet(content: string, query: string): string {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  const compact = query.replace(/[-_]+/g, '')
+  const words = [query, compact, ...query.split(/[\s_-]+/)]
+    .map((word) => word.toLowerCase().trim())
+    .filter(Boolean)
   const lower = content.toLowerCase()
   let bestIdx = -1
   for (const word of words) {
@@ -77,17 +86,43 @@ export async function searchVault(
   const miniSearch = new MiniSearch<VaultDoc>({
     fields: ['name', 'content', 'code'],
     storeFields: ['name'],
-    idField: 'id'
+    idField: 'id',
+    processTerm: (term) => term.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   })
   miniSearch.addAll(docs)
 
-  const results = miniSearch.search(query, {
-    fields: mode === 'code' ? ['code'] : ['name', 'content', 'code'],
-    prefix: true,
-    fuzzy: 0.2
+  const fields = mode === 'code' ? ['code'] : ['name', 'content', 'code']
+  const compactQuery = query.trim().replace(/[-_]+/g, '')
+  const spacedQuery = query.trim().replace(/[-_]+/g, ' ')
+  const searchOptions = {
+    fields,
+    combineWith: 'AND' as const,
+    boost: mode === 'code' ? {} : { name: 6, code: 2 }
+  }
+
+  let results = miniSearch.search(compactQuery, {
+    ...searchOptions,
+    prefix: false,
+    fuzzy: false
   })
 
-  return results.map((r) => {
+  if (results.length === 0 && spacedQuery !== compactQuery) {
+    results = miniSearch.search(spacedQuery, {
+      ...searchOptions,
+      prefix: false,
+      fuzzy: false
+    })
+  }
+
+  if (results.length === 0 && compactQuery.length >= 3) {
+    results = miniSearch.search(compactQuery, {
+      ...searchOptions,
+      prefix: true,
+      fuzzy: false
+    })
+  }
+
+  return results.slice(0, 30).map((r) => {
     const doc = docsById.get(String(r.id))
     const source = mode === 'code' ? (doc?.code ?? '') : (doc?.content ?? '')
     return {

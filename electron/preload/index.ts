@@ -17,7 +17,11 @@ const api: ElectronApi = {
     getLastVaultPath: () => ipcRenderer.invoke(IPC.vault.getLastVaultPath),
     setLastVaultPath: (vaultPath) => ipcRenderer.invoke(IPC.vault.setLastVaultPath, vaultPath),
     updateRefs: (vaultRoot, oldPath, newPath) =>
-      ipcRenderer.invoke(IPC.vault.updateRefs, vaultRoot, oldPath, newPath)
+      ipcRenderer.invoke(IPC.vault.updateRefs, vaultRoot, oldPath, newPath),
+    listRecent: () => ipcRenderer.invoke(IPC.vault.listRecent),
+    removeRecent: (path) => ipcRenderer.invoke(IPC.vault.removeRecent, path),
+    saveSession: (vaultPath, session) => ipcRenderer.invoke(IPC.vault.saveSession, vaultPath, session),
+    getSession: (vaultPath) => ipcRenderer.invoke(IPC.vault.getSession, vaultPath)
   },
   trash: {
     list: (rootPath) => ipcRenderer.invoke(IPC.trash.list, rootPath),
@@ -65,7 +69,9 @@ const api: ElectronApi = {
       ipcRenderer.on(IPC.window.confirmClose, listener)
       return () => ipcRenderer.removeListener(IPC.window.confirmClose, listener)
     },
-    confirmCloseAccepted: () => ipcRenderer.send(IPC.window.closeAccepted)
+    confirmCloseAccepted: () => ipcRenderer.send(IPC.window.closeAccepted),
+    getToggleShortcut: () => ipcRenderer.invoke(IPC.window.getToggleShortcut),
+    setToggleShortcut: (accelerator) => ipcRenderer.invoke(IPC.window.setToggleShortcut, accelerator)
   },
   variables: {
     scanUsage: (rootPath) => ipcRenderer.invoke(IPC.variables.scanUsage, rootPath),
@@ -74,7 +80,9 @@ const api: ElectronApi = {
     saveContext: (rootPath, name, values) => ipcRenderer.invoke(IPC.variables.saveContext, rootPath, name, values),
     deleteContext: (rootPath, name) => ipcRenderer.invoke(IPC.variables.deleteContext, rootPath, name),
     exportJson: (rootPath) => ipcRenderer.invoke(IPC.variables.exportJson, rootPath),
-    importJson: (rootPath) => ipcRenderer.invoke(IPC.variables.importJson, rootPath)
+    importJson: (rootPath) => ipcRenderer.invoke(IPC.variables.importJson, rootPath),
+    readMeta: (rootPath) => ipcRenderer.invoke(IPC.variables.readMeta, rootPath),
+    writeMeta: (rootPath, meta) => ipcRenderer.invoke(IPC.variables.writeMeta, rootPath, meta)
   }
 }
 

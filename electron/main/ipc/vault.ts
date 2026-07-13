@@ -28,10 +28,22 @@ import {
   importVariablesJson,
   readVaultSettings,
   writeVaultSettings,
+  readVariablesMeta,
+  writeVariablesMeta,
   type VaultSettings
 } from '../services/configStore'
+import type { VariablesMeta } from '../shared-types'
 import { setDirtyState } from '../window'
-import { getLastVaultPath, setLastVaultPath } from '../services/appConfigStore'
+import {
+  getLastVaultPath,
+  setLastVaultPath,
+  addToRecentVaults,
+  removeFromRecentVaults,
+  getRecentVaults,
+  saveVaultSession,
+  getVaultSession,
+  type VaultSession
+} from '../services/appConfigStore'
 import { setActiveVaultRoot, getActiveVaultRoot } from '../services/activeVaultStore'
 import { isWithinVault } from '../services/httpServer/pathGuard'
 
@@ -119,6 +131,23 @@ export function registerVaultIpc(): void {
 
   ipcMain.handle(IPC.vault.setLastVaultPath, async (_event, vaultPath: string | null) => {
     await setLastVaultPath(vaultPath)
+    if (vaultPath) await addToRecentVaults(vaultPath)
+  })
+
+  ipcMain.handle(IPC.vault.listRecent, async () => {
+    return getRecentVaults()
+  })
+
+  ipcMain.handle(IPC.vault.removeRecent, async (_event, vaultPath: string) => {
+    await removeFromRecentVaults(vaultPath)
+  })
+
+  ipcMain.handle(IPC.vault.saveSession, async (_event, vaultPath: string, session: VaultSession) => {
+    await saveVaultSession(vaultPath, session)
+  })
+
+  ipcMain.handle(IPC.vault.getSession, async (_event, vaultPath: string) => {
+    return getVaultSession(vaultPath)
   })
 
   ipcMain.handle(IPC.vault.updateRefs, async (_event, vaultRoot: string, oldPath: string, newPath: string) => {
@@ -203,6 +232,16 @@ export function registerVaultIpc(): void {
   ipcMain.handle(IPC.variables.deleteContext, async (_event, rootPath: string, name: string) => {
     assertIsActiveRoot(rootPath)
     await deleteContext(rootPath, name)
+  })
+
+  ipcMain.handle(IPC.variables.readMeta, async (_event, rootPath: string) => {
+    assertIsActiveRoot(rootPath)
+    return readVariablesMeta(rootPath)
+  })
+
+  ipcMain.handle(IPC.variables.writeMeta, async (_event, rootPath: string, meta: VariablesMeta) => {
+    assertIsActiveRoot(rootPath)
+    await writeVariablesMeta(rootPath, meta)
   })
 
   ipcMain.handle(IPC.variables.exportJson, async (_event, rootPath: string) => {

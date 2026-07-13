@@ -35,7 +35,7 @@ async function walkDirectory(dirPath: string): Promise<VaultTreeNode[]> {
         type: 'folder',
         children: await walkDirectory(entryPath)
       })
-    } else if (entry.isFile() && /\.(md|canvas|png|jpe?g|gif|svg|webp|bmp|pdf)$/i.test(entry.name)) {
+    } else if (entry.isFile() && /\.(md|canvas|excalidraw|png|jpe?g|gif|svg|webp|bmp|pdf)$/i.test(entry.name)) {
       nodes.push({
         name: entry.name,
         path: entryPath,
@@ -70,7 +70,7 @@ async function pathExists(path: string): Promise<boolean> {
 }
 
 function withFileExtension(name: string): string {
-  if (/\.(md|canvas)$/i.test(name)) return name
+  if (/\.(md|canvas|excalidraw)$/i.test(name)) return name
   return `${name}.md`
 }
 

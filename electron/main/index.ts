@@ -5,6 +5,8 @@ import { registerExposureIpc } from './ipc/exposure'
 import { registerWindowIpc } from './ipc/window'
 import { registerVaultAssetSchemePrivileges, registerVaultAssetProtocol } from './protocol'
 import { stopServer } from './services/httpServer/server'
+import { getGlobalToggleShortcut } from './services/appConfigStore'
+import { registerToggleShortcut, unregisterToggleShortcut } from './services/globalToggleShortcut'
 
 registerVaultAssetSchemePrivileges()
 
@@ -20,12 +22,15 @@ if (!gotLock) {
     }
   })
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     registerVaultAssetProtocol()
     registerVaultIpc()
     registerExposureIpc()
     registerWindowIpc()
-    createMainWindow()
+    const win = createMainWindow()
+
+    const shortcut = await getGlobalToggleShortcut()
+    registerToggleShortcut(shortcut, win)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
@@ -38,5 +43,6 @@ if (!gotLock) {
 
   app.on('will-quit', () => {
     stopServer()
+    unregisterToggleShortcut()
   })
 }

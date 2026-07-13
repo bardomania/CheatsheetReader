@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, Suspense, lazy, type MouseEvent as ReactMouseEvent } from 'react'
 import { api } from './lib/ipc'
 import { useVaultStore } from './state/vaultStore'
 import { useVariablesStore } from './state/variablesStore'
@@ -6,6 +6,7 @@ import FileTree from './components/sidebar/FileTree'
 import VariablesPanel from './components/sidebar/VariablesPanel'
 import TrashPanel from './components/sidebar/TrashPanel'
 import SearchPanel from './components/sidebar/SearchPanel'
+import VaultSwitcher from './components/sidebar/VaultSwitcher'
 import CommandsView from './components/editor/CommandsView'
 import AtlasView from './components/atlas/AtlasView'
 import PromptDialog from './components/common/PromptDialog'
@@ -14,6 +15,7 @@ import NewFileDialog from './components/common/NewFileDialog'
 import MarkdownPreview from './components/editor/MarkdownPreview'
 import MarkdownEditor from './components/editor/MarkdownEditor'
 import CanvasView from './components/canvas/CanvasView'
+const ExcalidrawView = lazy(() => import('./components/editor/ExcalidrawView'))
 import HelpPage from './components/help/HelpPage'
 import ExposurePanel from './components/common/ExposurePanel'
 import FindBar from './components/common/FindBar'
@@ -23,7 +25,7 @@ import { getFileTags, setFileTags } from './lib/frontmatter'
 import { buildEmbedIndex, buildWikiLinkIndex } from './lib/wikiLinks'
 import { vaultAssetUrl } from './lib/vaultAssetUrl'
 import { toggleTaskListLine } from './lib/taskList'
-import type { VaultSettings, TrashManifest, ExposureStatus } from '../../../electron/main/shared-types'
+import type { VaultSettings, TrashManifest, ExposureStatus, VaultHistoryEntry } from '../../../electron/main/shared-types'
 
 interface Tab {
   path: string
@@ -59,12 +61,17 @@ export default function App() {
   const activeContext = useVariablesStore((s) => s.activeContext)
   const setActiveContext = useVariablesStore((s) => s.setActiveContext)
   const upsertContext = useVariablesStore((s) => s.upsertContext)
+  const order = useVariablesStore((s) => s.order)
+  const presets = useVariablesStore((s) => s.presets)
+  const setOrder = useVariablesStore((s) => s.setOrder)
+  const setPresets = useVariablesStore((s) => s.setPresets)
 
   // --- tabs ---
   const [tabs, setTabs] = useState<Tab[]>([])
   const [activeTabPath, setActiveTabPath] = useState<string | null>(null)
   const tabsRef = useRef<Tab[]>([])
   useEffect(() => { tabsRef.current = tabs }, [tabs])
+  const mainContentRef = useRef<HTMLDivElement>(null)
 
   // --- navigation history (back/forward across opened files) ---
   const navHistoryRef = useRef<string[]>([])
@@ -116,6 +123,7 @@ export default function App() {
 
   const activeExtension = extensionOf(activeFilePath ?? '')
   const isCanvasFile = (activeFilePath ?? '').toLowerCase().endsWith('.canvas')
+  const isExcalidrawFile = (activeFilePath ?? '').toLowerCase().endsWith('.excalidraw')
   const isImageFile = IMAGE_EXTENSIONS.has(activeExtension)
   const isPdfFile = activeExtension === 'pdf'
   const isMediaFile = isImageFile || isPdfFile
@@ -123,6 +131,7 @@ export default function App() {
   // --- other state ---
   const [vaultSettings, setVaultSettings] = useState<VaultSettings>(DEFAULT_VAULT_SETTINGS)
   const [trashEntries, setTrashEntries] = useState<TrashManifest[]>([])
+  const [recentVaults, setRecentVaults] = useState<VaultHistoryEntry[]>([])
   const [overlay, setOverlay] = useState<'none' | 'help' | 'atlas' | 'settings'>('none')
   const [sidebarPanel, setSidebarPanel] = useState<'tree' | 'trash' | 'search'>('tree')
   const [exposureWarning, setExposureWarning] = useState<string | null>(null)
@@ -295,7 +304,8 @@ export default function App() {
 
   useEffect(() => {
     setFindBarOpen(false)
-  }, [activeTabPath, mode])
+    mainContentRef.current?.scrollTo(0, 0)
+  }, [activeTabPath])
 
   useEffect(() => {
     if (!vaultSettings.autosaveEnabled) return
@@ -327,8 +337,10 @@ export default function App() {
     setTree(newTree)
     const usage = await api().variables.scanUsage(path)
     setUsage(usage)
-    const persisted = await api().variables.loadPersisted(path)
-    const settings = await api().vaultSettings.read(path)
+    const [persisted, settings] = await Promise.all([
+      api().variables.loadPersisted(path),
+      api().vaultSettings.read(path)
+    ])
     setVaultSettings(settings)
 
     let contexts = persisted.contexts
@@ -345,14 +357,52 @@ export default function App() {
     setValues(activeValues)
     setActiveContext(activeName)
     await api().vault.setLastVaultPath(path)
+
+    let meta = { order: [] as string[], presets: {} as Record<string, string[]> }
+    try { meta = await api().variables.readMeta(path) } catch {}
+    const knownNames = new Set(Object.keys(persisted.values))
+    const validOrder = meta.order.filter((n) => knownNames.has(n))
+    const unordered = [...knownNames].filter((n) => !validOrder.includes(n)).sort()
+    setOrder([...validOrder, ...unordered])
+    setPresets(meta.presets)
+
+    // Restore last session for this vault
+    const session = await api().vault.getSession(path)
+    if (session?.openTabs.length) {
+      for (const tabPath of session.openTabs) {
+        try { await openTabNoNav(tabPath) } catch { /* file may have moved or been deleted */ }
+      }
+      if (session.activeTabPath) setActiveTabPath(session.activeTabPath)
+    }
+
+    setRecentVaults(await api().vault.listRecent())
   }
 
   useEffect(() => {
+    api().vault.listRecent().then(setRecentVaults)
     api()
       .vault.getLastVaultPath()
       .then((path) => { if (path) loadVault(path) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Persist the open tabs for the current vault so they can be restored next launch.
+  // Debounced to avoid writing on every intermediate state change during vault load.
+  const sessionSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!rootPath) return
+    if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current)
+    sessionSaveTimer.current = setTimeout(() => {
+      api().vault.saveSession(rootPath, {
+        openTabs: tabs.map((t) => t.path),
+        activeTabPath
+      })
+    }, 1500)
+    return () => {
+      if (sessionSaveTimer.current) clearTimeout(sessionSaveTimer.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs, activeTabPath, rootPath])
 
   // --- file operations ---
   async function refreshTree(): Promise<void> {
@@ -377,8 +427,17 @@ export default function App() {
     setNewFileDialogParent(null)
     try {
       const isCanvas = template === '__canvas__'
-      const fileName = isCanvas ? (name.toLowerCase().endsWith('.canvas') ? name : `${name}.canvas`) : name
-      const content = isCanvas ? '{"nodes":[],"edges":[]}' : await api().templates.getContent(template)
+      const isExcalidraw = template === '__excalidraw__'
+      const fileName = isCanvas
+        ? (name.toLowerCase().endsWith('.canvas') ? name : `${name}.canvas`)
+        : isExcalidraw
+        ? (name.toLowerCase().endsWith('.excalidraw') ? name : `${name}.excalidraw`)
+        : name
+      const content = isCanvas
+        ? '{"nodes":[],"edges":[]}'
+        : isExcalidraw
+        ? '{"type":"excalidraw","version":2,"source":"","elements":[],"appState":{"gridSize":null,"viewBackgroundColor":"#1a1a2e"},"files":{}}'
+        : await api().templates.getContent(template)
       const filePath = await api().vault.createFile(parentDirPath, fileName, content)
       await refreshTree()
       await openTab(filePath)
@@ -500,9 +559,25 @@ export default function App() {
     await loadVault(path)
   }
 
-  function handleSelectFile(path: string): void {
-    openTab(path)
+  async function handleSwitchVault(path: string): Promise<void> {
+    const hasDirty = tabsRef.current.some((t) => t.mode === 'edit' && t.draft !== t.content)
+    if (hasDirty && !(await showConfirm('You have unsaved changes. Discard them?', { confirmLabel: 'Discard', danger: true }))) return
+    try {
+      await loadVault(path)
+    } catch {
+      window.alert(`Could not open vault: ${path}`)
+      setRecentVaults(await api().vault.listRecent())
+    }
   }
+
+  async function handleRemoveRecentVault(path: string): Promise<void> {
+    await api().vault.removeRecent(path)
+    setRecentVaults(await api().vault.listRecent())
+  }
+
+  const handleSelectFile = useCallback((path: string): void => {
+    openTab(path)
+  }, [openTab])
 
   const handleSave = useCallback(async (): Promise<void> => {
     const path = activeTabPath
@@ -541,6 +616,15 @@ export default function App() {
     }, 400)
     return () => clearTimeout(timer)
   }, [rootPath, variableValues, activeContext, upsertContext])
+
+  useEffect(() => {
+    if (!rootPath) return
+    const timer = setTimeout(() => {
+      api().variables.writeMeta(rootPath, { order, presets })
+    }, 400)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootPath, order, presets])
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent): void {
@@ -625,7 +709,6 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <button className="btn btn-primary" onClick={handlePickFolder}>Open vault folder</button>
         {rootPath && <span className="vault-path">{rootPath}</span>}
         <div className="button-group">
           {rootPath && (
@@ -667,7 +750,7 @@ export default function App() {
           </button>
         </div>
         {exposureWarning && <span className="exposure-banner">⚠ {exposureWarning}</span>}
-        {activeFilePath && !isCanvasFile && !isMediaFile && (
+        {activeFilePath && !isCanvasFile && !isExcalidrawFile && !isMediaFile && (
           <div className="editor-controls">
             <button
               className="btn btn-secondary btn-icon"
@@ -717,36 +800,45 @@ export default function App() {
       ) : (
         <div className="app-body">
           <aside className="app-sidebar" style={{ width: sidebarWidth }}>
-            {!rootPath ? (
-              <p className="empty-hint">Open a folder to start browsing your cheatsheets.</p>
-            ) : sidebarPanel === 'trash' ? (
-              <TrashPanel
-                entries={trashEntries}
-                onRestore={handleRestoreFromTrash}
-                onPurge={handlePurgeFromTrash}
-                onClose={() => setSidebarPanel('tree')}
-              />
-            ) : sidebarPanel === 'search' ? (
-              <SearchPanel
-                rootPath={rootPath}
-                onOpenFile={(filePath) => { setSidebarPanel('tree'); handleSelectFile(filePath) }}
-                onClose={() => setSidebarPanel('tree')}
-              />
-            ) : (
-              <FileTree
-                nodes={tree}
-                activeFilePath={activeFilePath}
-                rootPath={rootPath}
-                onSelectFile={handleSelectFile}
-                onCreateFile={handleCreateFile}
-                onCreateFolder={handleCreateFolder}
-                onRename={handleRename}
-                onDuplicate={handleDuplicate}
-                onDelete={handleDelete}
-                onMove={handleMove}
-                onAssignFlagToFolder={(path, name) => setFolderFlagTarget({ path, name })}
-              />
-            )}
+            <div className="sidebar-content">
+              {!rootPath ? (
+                <p className="empty-hint">Open a folder to start browsing your cheatsheets.</p>
+              ) : sidebarPanel === 'trash' ? (
+                <TrashPanel
+                  entries={trashEntries}
+                  onRestore={handleRestoreFromTrash}
+                  onPurge={handlePurgeFromTrash}
+                  onClose={() => setSidebarPanel('tree')}
+                />
+              ) : sidebarPanel === 'search' ? (
+                <SearchPanel
+                  rootPath={rootPath}
+                  onOpenFile={(filePath) => { setSidebarPanel('tree'); handleSelectFile(filePath) }}
+                  onClose={() => setSidebarPanel('tree')}
+                />
+              ) : (
+                <FileTree
+                  nodes={tree}
+                  activeFilePath={activeFilePath}
+                  rootPath={rootPath}
+                  onSelectFile={handleSelectFile}
+                  onCreateFile={handleCreateFile}
+                  onCreateFolder={handleCreateFolder}
+                  onRename={handleRename}
+                  onDuplicate={handleDuplicate}
+                  onDelete={handleDelete}
+                  onMove={handleMove}
+                  onAssignFlagToFolder={(path, name) => setFolderFlagTarget({ path, name })}
+                />
+              )}
+            </div>
+            <VaultSwitcher
+              currentVaultPath={rootPath}
+              recentVaults={recentVaults}
+              onSwitchVault={handleSwitchVault}
+              onOpenNew={handlePickFolder}
+              onRemoveVault={handleRemoveRecentVault}
+            />
           </aside>
           <div className="sidebar-resize-handle" onMouseDown={handleSidebarResizeMouseDown} />
           <main className="app-main">
@@ -802,7 +894,7 @@ export default function App() {
                 })}
               </div>
             )}
-            <div className="app-main-content">
+            <div ref={mainContentRef} className={`app-main-content${isCanvasFile || isExcalidrawFile ? ' app-main-content--fullbleed' : ''}`}>
             {findBarOpen && <FindBar onClose={() => setFindBarOpen(false)} />}
             {activeTab ? (
               isImageFile ? (
@@ -826,6 +918,18 @@ export default function App() {
                     setTabs((prev) => prev.map((t) => (t.path === activeFilePath ? { ...t, content: json, draft: json } : t)))
                   }}
                 />
+              ) : isExcalidrawFile ? (
+                <Suspense fallback={<p className="empty-hint">Loading Excalidraw…</p>}>
+                  <ExcalidrawView
+                    key={activeFilePath}
+                    content={fileContent}
+                    filePath={activeFilePath!}
+                    onSave={(json) => {
+                      api().file.write(activeFilePath!, json)
+                      setTabs((prev) => prev.map((t) => (t.path === activeFilePath ? { ...t, content: json, draft: json } : t)))
+                    }}
+                  />
+                </Suspense>
               ) : mode === 'edit' ? (
                 <MarkdownEditor
                   key={activeFilePath}
@@ -855,7 +959,7 @@ export default function App() {
             ) : (
               <p className="empty-hint">Select a cheatsheet to view it.</p>
             )}
-            {activeTab && !isCanvasFile && !isMediaFile && (
+            {activeTab && !isCanvasFile && !isExcalidrawFile && !isMediaFile && (
               <FlagsBar
                 content={activeTab.mode === 'edit' ? activeTab.draft : activeTab.content}
                 onChange={handleFlagsChange}

@@ -62,11 +62,15 @@ export function collectFilePaths(nodes: VaultTreeNode[]): string[] {
   return paths
 }
 
-const ATLAS_FILE_RE = /\.(md|canvas)$/i
+const ATLAS_FILE_RE = /\.md$/i
 
 export function filterAtlasTree(nodes: VaultTreeNode[]): VaultTreeNode[] {
+  const cheatsheetRoot = nodes.find(
+    (node) => node.type === 'folder' && node.name.toLowerCase() === 'cheatsheet'
+  )
+  const scope = cheatsheetRoot?.children ?? nodes
   const result: VaultTreeNode[] = []
-  for (const node of nodes) {
+  for (const node of scope) {
     if (node.type === 'file') {
       if (ATLAS_FILE_RE.test(node.name)) result.push(node)
     } else if (node.children) {
@@ -77,9 +81,23 @@ export function filterAtlasTree(nodes: VaultTreeNode[]): VaultTreeNode[] {
   return result
 }
 
-const PALETTE = ['#5b8def', '#39d98a', '#e0a93f', '#e06c6c', '#a86cf0', '#3ddcd0', '#d9667a', '#9fd93d']
+const CONCEPT_COLORS: Record<string, string> = {
+  web: '#4f8cff',
+  internal: '#ef6f6c',
+  mobile: '#e5a94f',
+  forensic: '#a978e8',
+  forensics: '#a978e8',
+  'ai red team': '#38c7b7',
+  'ai-red-team': '#38c7b7',
+  vim: '#7fb069',
+  tooling: '#8a98a8'
+}
+
+const PALETTE = ['#4f8cff', '#38c7b7', '#e5a94f', '#ef6f6c', '#a978e8', '#63b3a4', '#d77893', '#8bbf5a']
 
 export function colorForConcept(concept: string): string {
+  const semanticColor = CONCEPT_COLORS[concept.toLowerCase()]
+  if (semanticColor) return semanticColor
   let hash = 0
   for (let i = 0; i < concept.length; i++) hash = (hash * 31 + concept.charCodeAt(i)) >>> 0
   return PALETTE[hash % PALETTE.length]

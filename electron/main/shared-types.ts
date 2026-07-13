@@ -11,7 +11,11 @@ export const IPC = {
     saveImage: 'vault:saveImage',
     getLastVaultPath: 'vault:getLastVaultPath',
     setLastVaultPath: 'vault:setLastVaultPath',
-    updateRefs: 'vault:updateRefs'
+    updateRefs: 'vault:updateRefs',
+    listRecent: 'vault:listRecent',
+    removeRecent: 'vault:removeRecent',
+    saveSession: 'vault:saveSession',
+    getSession: 'vault:getSession'
   },
   trash: {
     list: 'trash:list',
@@ -50,7 +54,9 @@ export const IPC = {
     stopFindInPage: 'window:stopFindInPage',
     foundInPage: 'window:foundInPage',
     confirmClose: 'window:confirmClose',
-    closeAccepted: 'window:closeAccepted'
+    closeAccepted: 'window:closeAccepted',
+    getToggleShortcut: 'window:getToggleShortcut',
+    setToggleShortcut: 'window:setToggleShortcut'
   },
   variables: {
     scanUsage: 'variables:scanUsage',
@@ -59,9 +65,21 @@ export const IPC = {
     saveContext: 'variables:saveContext',
     deleteContext: 'variables:deleteContext',
     exportJson: 'variables:exportJson',
-    importJson: 'variables:importJson'
+    importJson: 'variables:importJson',
+    readMeta: 'variables:readMeta',
+    writeMeta: 'variables:writeMeta'
   }
 } as const
+
+export interface VaultHistoryEntry {
+  path: string
+  lastOpened: string
+}
+
+export interface VaultSession {
+  openTabs: string[]
+  activeTabPath: string | null
+}
 
 export interface VaultTreeNode {
   name: string
@@ -84,6 +102,11 @@ export interface VariableContext {
   values: Record<string, string>
   createdAt: string
   updatedAt: string
+}
+
+export interface VariablesMeta {
+  order: string[]
+  presets: Record<string, string[]>
 }
 
 export interface VariablesExport {
@@ -119,6 +142,11 @@ export interface FindInPageOptions {
   forward?: boolean
   findNext?: boolean
   matchCase?: boolean
+}
+
+export interface SetToggleShortcutResult {
+  ok: boolean
+  error?: string
 }
 
 export interface ExposureStatus {
@@ -165,6 +193,10 @@ export interface ElectronApi {
     getLastVaultPath: () => Promise<string | null>
     setLastVaultPath: (vaultPath: string | null) => Promise<void>
     updateRefs: (vaultRoot: string, oldPath: string, newPath: string) => Promise<string[]>
+    listRecent: () => Promise<VaultHistoryEntry[]>
+    removeRecent: (path: string) => Promise<void>
+    saveSession: (vaultPath: string, session: VaultSession) => Promise<void>
+    getSession: (vaultPath: string) => Promise<VaultSession | null>
   }
   trash: {
     list: (rootPath: string) => Promise<TrashManifest[]>
@@ -204,6 +236,8 @@ export interface ElectronApi {
     onFindResult: (callback: (result: FindInPageResult) => void) => () => void
     onConfirmClose: (callback: () => void) => () => void
     confirmCloseAccepted: () => void
+    getToggleShortcut: () => Promise<string>
+    setToggleShortcut: (accelerator: string) => Promise<SetToggleShortcutResult>
   }
   variables: {
     scanUsage: (rootPath: string) => Promise<Record<string, string[]>>
@@ -213,5 +247,7 @@ export interface ElectronApi {
     deleteContext: (rootPath: string, name: string) => Promise<void>
     exportJson: (rootPath: string) => Promise<string | null>
     importJson: (rootPath: string) => Promise<VariablesExport | null>
+    readMeta: (rootPath: string) => Promise<VariablesMeta>
+    writeMeta: (rootPath: string, meta: VariablesMeta) => Promise<void>
   }
 }

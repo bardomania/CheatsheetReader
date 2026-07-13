@@ -7,8 +7,9 @@ import { getFileTags, setFileTags } from '../../lib/frontmatter'
 import FlagPickerDialog from '../common/FlagPickerDialog'
 import FolderFlagDialog from '../common/FolderFlagDialog'
 
-const WIDTH = 1200
-const HEIGHT = 760
+const DEFAULT_WIDTH = 1200
+const DEFAULT_HEIGHT = 760
+const COMPACT_TAG_LIMIT = 10
 
 interface AtlasNode extends VaultTreeNode {
   name: string
@@ -48,12 +49,28 @@ export default function AtlasView({
   const [hoveredPath, setHoveredPath] = useState<string | null>(null)
   const [flagPickerPath, setFlagPickerPath] = useState<string | null>(null)
   const [folderFlagTarget, setFolderFlagTarget] = useState<{ path: string; name: string } | null>(null)
+  const [showAllTags, setShowAllTags] = useState(false)
+  const [focusedGroupPath, setFocusedGroupPath] = useState<string | null>(null)
+  const [canvasSize, setCanvasSize] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT })
   const searchRef = useRef<HTMLInputElement>(null)
+  const canvasRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const element = canvasRef.current
+    if (!element) return
+    const observer = new ResizeObserver(([entry]) => {
+      const width = Math.max(640, Math.round(entry.contentRect.width))
+      const height = Math.max(420, Math.round(entry.contentRect.height))
+      setCanvasSize((current) => current.width === width && current.height === height ? current : { width, height })
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
     async function load(): Promise<void> {
-      const paths = collectFilePaths(tree)
+      const paths = collectFilePaths(filterAtlasTree(tree))
       const entries = await Promise.all(
         paths.map(async (p) => {
           const content = await api().file.read(p)
@@ -84,44 +101,78 @@ export default function AtlasView({
   }, [metrics])
 
   const searchLower = search.toLowerCase().trim()
+  const hasFilter = selectedTags.size > 0 || searchLower.length > 0
+  const showOverview = !focusedGroupPath && !hasFilter
+
+  const focusedGroup = useMemo(
+    () => cheatsheetTree.find((node) => node.path === focusedGroupPath) ?? null,
+    [cheatsheetTree, focusedGroupPath]
+  )
+
+  const baseTree = useMemo(() => {
+    if (!focusedGroup) return cheatsheetTree
+    return focusedGroup.type === 'folder' ? focusedGroup.children ?? [] : [focusedGroup]
+  }, [cheatsheetTree, focusedGroup])
+
+  const overviewGroups = useMemo(() => cheatsheetTree.map((node) => ({
+    node,
+    count: collectFilePaths([node]).length,
+    sampleNames: collectFilePaths([node]).slice(0, 3).map((path) =>
+      path.replace(/\\/g, '/').split('/').pop()?.replace(/\.md$/i, '') ?? ''
+    )
+  })).filter((item) => item.count > 0), [cheatsheetTree])
 
   // Paths that pass both the tag filter and the text search
   const visiblePaths = useMemo(() => {
     const set = new Set<string>()
     for (const m of Object.values(metrics)) {
+      if (focusedGroupPath && !m.path.startsWith(focusedGroupPath)) continue
       if (selectedTags.size > 0) {
         const labels = m.tags.length > 0 ? m.tags : [m.concept]
         const hasAll = [...selectedTags].every((t) => labels.includes(t))
         if (!hasAll) continue
       }
       if (searchLower) {
-        const name = m.path.replace(/\\/g, '/').split('/').pop() ?? ''
-        if (!name.toLowerCase().includes(searchLower)) continue
+        const searchable = `${relPath(m.path)} ${m.tags.join(' ')}`.toLowerCase()
+        if (!searchable.includes(searchLower)) continue
       }
       set.add(m.path)
     }
     return set
-  }, [metrics, selectedTags, searchLower])
+  }, [metrics, selectedTags, searchLower, focusedGroupPath])
+
+  const displayedTree = useMemo(() => {
+    if (!hasFilter) return baseTree
+    function prune(nodes: VaultTreeNode[]): VaultTreeNode[] {
+      return nodes.flatMap((node) => {
+        if (node.type === 'file') return visiblePaths.has(node.path) ? [node] : []
+        const children = prune(node.children ?? [])
+        return children.length > 0 ? [{ ...node, children }] : []
+      })
+    }
+    return prune(baseTree)
+  }, [baseTree, hasFilter, visiblePaths])
 
   const { leaves, groups } = useMemo(() => {
     const root = hierarchy<AtlasNode>(
-      { name: 'root', path: rootPath, type: 'folder', children: cheatsheetTree } as AtlasNode,
+      { name: 'root', path: rootPath, type: 'folder', children: displayedTree } as AtlasNode,
       (d) => d.children as AtlasNode[] | undefined
     )
-      .sum((d) => (d.type === 'file' ? metrics[d.path]?.lineCount ?? 1 : 0))
+      .sum((d) => (d.type === 'file' ? 18 + Math.sqrt(metrics[d.path]?.lineCount ?? 1) : 0))
       .sort((a, b) => (b.value ?? 0) - (a.value ?? 0))
 
     const laidOut = treemap<AtlasNode>()
-      .size([WIDTH, HEIGHT])
-      .paddingInner(2)
-      .paddingOuter(4)
-      .paddingTop(20)(root) as HierarchyRectangularNode<AtlasNode>
+      .size([canvasSize.width, canvasSize.height])
+      .paddingInner(3)
+      .paddingOuter(6)
+      .paddingTop(24)
+      .round(true)(root) as HierarchyRectangularNode<AtlasNode>
 
     return {
       leaves: laidOut.leaves(),
-      groups: laidOut.descendants().filter((d) => d.depth > 0 && d.children && d.children.length > 0)
+      groups: laidOut.descendants().filter((d) => d.depth === 1 && d.children && d.children.length > 0)
     }
-  }, [cheatsheetTree, rootPath, metrics])
+  }, [displayedTree, rootPath, metrics, canvasSize])
 
   function toggleTag(tag: string): void {
     setSelectedTags((prev) => {
@@ -188,8 +239,10 @@ export default function AtlasView({
   }
 
   const hoveredMetric = hoveredPath ? metrics[hoveredPath] : null
-  const hasFilter = selectedTags.size > 0 || searchLower.length > 0
-  const visibleCount = leaves.filter((l) => visiblePaths.has(l.data.path)).length
+  const visibleCount = showOverview
+    ? overviewGroups.reduce((total, group) => total + group.count, 0)
+    : visiblePaths.size
+  const shownTags = showAllTags ? tagCounts : tagCounts.slice(0, COMPACT_TAG_LIMIT)
 
   function relPath(p: string): string {
     const norm = p.replace(/\\/g, '/')
@@ -200,7 +253,18 @@ export default function AtlasView({
   return (
     <div className="atlas-view">
       <div className="atlas-header">
-        <h2>Atlas</h2>
+        <div className="atlas-heading">
+          <div className="atlas-breadcrumb">
+            {focusedGroup ? (
+              <>
+                <button onClick={() => setFocusedGroupPath(null)}>Atlas</button>
+                <span>/</span>
+                <h2>{focusedGroup.name}</h2>
+              </>
+            ) : <h2>Atlas</h2>}
+          </div>
+          <span>{visibleCount} cheatsheet{visibleCount !== 1 ? 's' : ''}</span>
+        </div>
 
         <div className="atlas-filter-bar">
           <div className="atlas-search-wrap">
@@ -216,7 +280,7 @@ export default function AtlasView({
           </div>
 
           <div className="atlas-tags">
-            {tagCounts.map(([tag, count]) => (
+            {shownTags.map(([tag, count]) => (
               <button
                 key={tag}
                 className={`concept-chip${selectedTags.has(tag) ? ' active' : ''}`}
@@ -228,6 +292,11 @@ export default function AtlasView({
                 <span className="concept-chip-count">{count}</span>
               </button>
             ))}
+            {tagCounts.length > COMPACT_TAG_LIMIT && (
+              <button className="atlas-more-tags" onClick={() => setShowAllTags((value) => !value)}>
+                {showAllTags ? 'Réduire' : `+${tagCounts.length - COMPACT_TAG_LIMIT} filtres`}
+              </button>
+            )}
           </div>
 
           {hasFilter && (
@@ -238,15 +307,38 @@ export default function AtlasView({
           )}
         </div>
 
-        <button className="btn btn-secondary btn-compact" onClick={onClose}>Close</button>
+        <button className="btn btn-secondary btn-compact" onClick={onClose}>Fermer</button>
       </div>
-      <svg
-        className="atlas-svg"
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        preserveAspectRatio="xMidYMid meet"
-        onClick={() => onCreateFile(rootPath)}
-      >
-        <rect x={0} y={0} width={WIDTH} height={HEIGHT} className="atlas-background" />
+      <div className="atlas-canvas" ref={canvasRef}>
+        {showOverview ? (
+          <div className="atlas-overview">
+            {overviewGroups.map(({ node, count, sampleNames }) => (
+              <button
+                key={node.path}
+                className="atlas-domain-card"
+                style={{ '--domain-color': colorForConcept(node.name) } as React.CSSProperties}
+                onClick={() => node.type === 'file' ? onOpenFile(node.path) : setFocusedGroupPath(node.path)}
+              >
+                <span className="atlas-domain-marker" />
+                <span className="atlas-domain-name">{node.name}</span>
+                <span className="atlas-domain-count">{count} note{count !== 1 ? 's' : ''}</span>
+                <span className="atlas-domain-samples">{sampleNames.join(' · ')}</span>
+                <span className="atlas-domain-action">Explorer →</span>
+              </button>
+            ))}
+          </div>
+        ) : leaves.length === 0 ? (
+          <div className="atlas-empty">
+            <strong>Aucune cheatsheet trouvée</strong>
+            <span>Essayez une recherche plus large ou effacez les filtres.</span>
+          </div>
+        ) : (
+        <svg
+          className="atlas-svg"
+          viewBox={`0 0 ${canvasSize.width} ${canvasSize.height}`}
+          preserveAspectRatio="none"
+        >
+        <rect x={0} y={0} width={canvasSize.width} height={canvasSize.height} className="atlas-background" />
 
         {groups.map((group) => {
           const node = group.data
@@ -287,11 +379,14 @@ export default function AtlasView({
           const dimmed = !visiblePaths.has(node.path)
           const w = (leaf.x1 ?? 0) - (leaf.x0 ?? 0)
           const h = (leaf.y1 ?? 0) - (leaf.y0 ?? 0)
+          const cleanName = node.name.replace(/\.md$/i, '')
+          const maxChars = Math.max(3, Math.floor((w - 10) / 7))
+          const tileName = cleanName.length > maxChars ? `${cleanName.slice(0, maxChars - 1)}…` : cleanName
           return (
             <g
               key={node.path}
               transform={`translate(${leaf.x0},${leaf.y0})`}
-              opacity={dimmed ? (hasFilter ? 0.08 : 1) : 1}
+              opacity={dimmed ? 0 : 1}
               onClick={(e) => {
                 e.stopPropagation()
                 if (!dimmed) onOpenFile(node.path)
@@ -308,7 +403,7 @@ export default function AtlasView({
               <rect width={Math.max(w, 0)} height={Math.max(h, 0)} fill={colorForConcept(concept)} rx={3} />
               {w > 40 && h > 20 && (
                 <text x={5} y={15} className="atlas-tile-label">
-                  {node.name}
+                  {tileName}
                 </text>
               )}
               {w > 30 && h > 18 && metric?.tags.length > 0 && metric.tags.slice(0, Math.floor((w - 8) / 10)).map((tag, i) => (
@@ -326,7 +421,9 @@ export default function AtlasView({
             </g>
           )
         })}
-      </svg>
+        </svg>
+        )}
+      </div>
 
       {hoveredMetric && (
         <div className="atlas-hover-hint">

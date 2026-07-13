@@ -154,10 +154,10 @@ function SideHandles(): React.ReactElement {
   )
 }
 
-function TextNode({ data, selected }: NodeProps & { data: NodeData }): React.ReactElement {
-  const [editing, setEditing] = useState(false)
+function TextNode({ id, data, selected }: NodeProps & { data: NodeData }): React.ReactElement {
   const ctx = useContext(CanvasRenderContext)
   const locked = ctx?.locked ?? true
+  const editing = ctx?.editingNodeId === id
 
   const rendered = useMemo(() => {
     if (!ctx || !data.text) return null
@@ -188,7 +188,7 @@ function TextNode({ data, selected }: NodeProps & { data: NodeData }): React.Rea
     <div
       className={`canvas-node canvas-node-text-shell${locked ? ' nopan' : ''}`}
       style={{ '--node-accent': resolveCanvasColor(data.color) } as React.CSSProperties}
-      onDoubleClick={(e) => { e.stopPropagation(); setEditing(true) }}
+      onDoubleClick={(e) => { e.stopPropagation(); ctx?.onStartEdit(id) }}
     >
       <NodeResizer isVisible={selected && !locked} minWidth={100} minHeight={60} />
       <SideHandles />
@@ -199,15 +199,15 @@ function TextNode({ data, selected }: NodeProps & { data: NodeData }): React.Rea
           defaultValue={data.text}
           onBlur={(e) => {
             data.onCommitText?.(e.target.value)
-            setEditing(false)
+            ctx?.onStopEdit()
           }}
         />
       ) : rendered ? (
         <CanvasTextContent>
           {rendered}
         </CanvasTextContent>
-      ) : selected && !locked ? (
-        <div className="canvas-node-text canvas-node-text-placeholder nopan">Empty note — double-click to edit</div>
+      ) : selected ? (
+        <div className="canvas-node-text canvas-node-text-placeholder nopan">Double-click to edit</div>
       ) : (
         <div className="canvas-node-text nopan" />
       )}
@@ -249,15 +249,15 @@ function LinkNode({ data, selected }: NodeProps & { data: NodeData }): React.Rea
   )
 }
 
-function GroupNode({ data, selected }: NodeProps & { data: NodeData }): React.ReactElement {
-  const [editing, setEditing] = useState(false)
+function GroupNode({ id, data, selected }: NodeProps & { data: NodeData }): React.ReactElement {
   const ctx = useContext(CanvasRenderContext)
   const locked = ctx?.locked ?? true
+  const editing = ctx?.editingNodeId === id
   return (
     <div
       className="canvas-group-shell"
       style={{ '--node-accent': resolveCanvasColor(data.color) } as React.CSSProperties}
-      onDoubleClick={(e) => { e.stopPropagation(); setEditing(true) }}
+      onDoubleClick={(e) => { e.stopPropagation(); ctx?.onStartEdit(id) }}
     >
       <NodeResizer isVisible={selected && !locked} minWidth={120} minHeight={80} />
       <SideHandles />
@@ -268,7 +268,7 @@ function GroupNode({ data, selected }: NodeProps & { data: NodeData }): React.Re
           defaultValue={data.label}
           onBlur={(e) => {
             data.onCommitLabel?.(e.target.value)
-            setEditing(false)
+            ctx?.onStopEdit()
           }}
         />
       ) : (
@@ -324,6 +324,7 @@ function CanvasInner({
   const lastSavedContent = useRef<string | null>(null)
   const [parseError, setParseError] = useState(false)
   const [locked, setLocked] = useState(true)
+  const [editingNodeId, setEditingNodeId] = useState<string | null>(null)
   const tree = useVaultStore((s) => s.tree)
   const [notePickerState, setNotePickerState] = useState<{
     mode: 'file' | 'url'
@@ -690,8 +691,19 @@ function CanvasInner({
   }
 
   const renderContext = useMemo<CanvasRenderContextValue>(
-    () => ({ filePath, vaultRoot, wikiLinkIndex, embedIndex, variableValues, onNavigate: onOpenFile, locked }),
-    [filePath, vaultRoot, wikiLinkIndex, embedIndex, variableValues, onOpenFile, locked]
+    () => ({
+      filePath,
+      vaultRoot,
+      wikiLinkIndex,
+      embedIndex,
+      variableValues,
+      onNavigate: onOpenFile,
+      locked,
+      editingNodeId,
+      onStartEdit: setEditingNodeId,
+      onStopEdit: () => setEditingNodeId(null)
+    }),
+    [filePath, vaultRoot, wikiLinkIndex, embedIndex, variableValues, onOpenFile, locked, editingNodeId]
   )
 
   if (parseError) {
@@ -739,6 +751,9 @@ function CanvasInner({
             maxZoom={3}
             zoomOnDoubleClick={false}
             proOptions={{ hideAttribution: true }}
+            onNodeDoubleClick={(_e, node) => {
+              if (node.type === 'text' || node.type === CANVAS_GROUP_TYPE) setEditingNodeId(node.id)
+            }}
           >
             <Background gap={32} className="canvas-flow-background" />
             <Controls showInteractive={false} />

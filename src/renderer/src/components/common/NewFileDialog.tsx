@@ -6,9 +6,11 @@ interface NewFileDialogProps {
   onCancel: () => void
 }
 
+type FileType = 'markdown' | 'canvas' | 'excalidraw'
+
 export default function NewFileDialog({ onSubmit, onCancel }: NewFileDialogProps) {
   const [name, setName] = useState('')
-  const [fileType, setFileType] = useState<'markdown' | 'canvas'>('markdown')
+  const [fileType, setFileType] = useState<FileType>('markdown')
   const [selectedTemplate, setSelectedTemplate] = useState('Empty')
   const [templates, setTemplates] = useState<string[]>(['Empty'])
 
@@ -21,7 +23,10 @@ export default function NewFileDialog({ onSubmit, onCancel }: NewFileDialogProps
   function handleSubmit(e: React.FormEvent): void {
     e.preventDefault()
     if (!name.trim()) return
-    const template = fileType === 'canvas' ? '__canvas__' : selectedTemplate
+    const template =
+      fileType === 'canvas' ? '__canvas__' :
+      fileType === 'excalidraw' ? '__excalidraw__' :
+      selectedTemplate
     onSubmit(name.trim(), template)
   }
 
@@ -45,6 +50,10 @@ export default function NewFileDialog({ onSubmit, onCancel }: NewFileDialogProps
           <label className={`new-file-type-option${fileType === 'canvas' ? ' active' : ''}`}>
             <input type="radio" name="file-type" checked={fileType === 'canvas'} onChange={() => setFileType('canvas')} />
             Canvas
+          </label>
+          <label className={`new-file-type-option${fileType === 'excalidraw' ? ' active' : ''}`}>
+            <input type="radio" name="file-type" checked={fileType === 'excalidraw'} onChange={() => setFileType('excalidraw')} />
+            Excalidraw
           </label>
         </div>
         {fileType === 'markdown' && (

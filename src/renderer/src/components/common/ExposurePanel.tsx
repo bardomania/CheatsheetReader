@@ -10,8 +10,119 @@ const ATTACHMENT_MODE_OPTIONS: { value: AttachmentFolderMode; label: string }[] 
   { value: 'subfolder', label: 'In subfolder under current folder' }
 ]
 
-const SECTIONS = ['Editor', 'Attachments', 'Variables', 'Network exposure'] as const
+const SECTIONS = ['Editor', 'Attachments', 'Variables', 'Shortcuts', 'Network exposure'] as const
 type Section = (typeof SECTIONS)[number]
+
+const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta'])
+
+const NAMED_KEYS: Record<string, string> = {
+  ' ': 'Space',
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  Escape: 'Escape',
+  Tab: 'Tab',
+  Backspace: 'Backspace',
+  Delete: 'Delete',
+  Enter: 'Return'
+}
+
+function mapKey(e: KeyboardEvent): string | null {
+  if (e.key.length === 1 && /[a-zA-Z0-9]/.test(e.key)) return e.key.toUpperCase()
+  if (NAMED_KEYS[e.key]) return NAMED_KEYS[e.key]
+  if (/^F\d{1,2}$/.test(e.key)) return e.key
+  return null
+}
+
+function buildAccelerator(e: KeyboardEvent): string | null {
+  const parts: string[] = []
+  if (e.ctrlKey) parts.push('CommandOrControl')
+  if (e.metaKey && !e.ctrlKey) parts.push('Super')
+  if (e.altKey) parts.push('Alt')
+  if (e.shiftKey) parts.push('Shift')
+  if (parts.length === 0) return null
+
+  const key = mapKey(e)
+  if (!key) return null
+  parts.push(key)
+  return parts.join('+')
+}
+
+interface ShortcutRecorderProps {
+  value: string
+  onSave: (accelerator: string) => Promise<void>
+}
+
+function ShortcutRecorder({ value, onSave }: ShortcutRecorderProps) {
+  const [recording, setRecording] = useState(false)
+  const [pending, setPending] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!recording) return
+
+    function onKeyDown(e: KeyboardEvent): void {
+      e.preventDefault()
+      e.stopPropagation()
+      if (MODIFIER_KEYS.has(e.key)) return
+      const accel = buildAccelerator(e)
+      if (!accel) {
+        setError('Add at least one modifier key (Ctrl, Alt, Shift or Win) plus a regular key.')
+        return
+      }
+      setError(null)
+      setPending(accel)
+      setRecording(false)
+    }
+
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [recording])
+
+  async function handleSave(accelerator: string): Promise<void> {
+    setSaving(true)
+    setError(null)
+    try {
+      await onSave(accelerator)
+      setPending(null)
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="shortcut-recorder">
+      <div className="shortcut-recorder-row">
+        <span className="shortcut-current">{recording ? 'Press a key combo…' : pending ?? value}</span>
+        {!recording && !pending && (
+          <button className="btn btn-secondary btn-compact" onClick={() => setRecording(true)}>
+            Change
+          </button>
+        )}
+        {recording && (
+          <button className="btn btn-secondary btn-compact" onClick={() => setRecording(false)}>
+            Cancel
+          </button>
+        )}
+        {pending && !recording && (
+          <>
+            <button className="btn btn-primary btn-compact" disabled={saving} onClick={() => handleSave(pending)}>
+              Save
+            </button>
+            <button className="btn btn-secondary btn-compact" onClick={() => setPending(null)}>
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+      {error && <div className="exposure-error">{error}</div>}
+    </div>
+  )
+}
 
 interface ExposurePanelProps {
   currentVaultRoot: string | null
@@ -34,6 +145,7 @@ export default function ExposurePanel({
   const [password, setPassword] = useState('')
   const [bearerToken, setBearerToken] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [toggleShortcut, setToggleShortcut] = useState('')
 
   const setValues = useVariablesStore((s) => s.setValues)
   const upsertContext = useVariablesStore((s) => s.upsertContext)
@@ -47,6 +159,7 @@ export default function ExposurePanel({
 
   useEffect(() => {
     refresh()
+    api().window.getToggleShortcut().then(setToggleShortcut)
   }, [])
 
   async function handleSaveBindConfig(): Promise<void> {
@@ -219,6 +332,27 @@ export default function ExposurePanel({
                 </button>
               </div>
               {!currentVaultRoot && <p className="empty-hint">Open a vault to export or import variables.</p>}
+            </section>
+          )}
+
+          {activeSection === 'Shortcuts' && (
+            <section>
+              <h3 className="settings-section-title">Shortcuts</h3>
+              <p className="exposure-intro">
+                Show/hide the window from anywhere, even when another app is focused. Press it once to bring the
+                window to the center of the screen, press it again to hide it instantly.
+              </p>
+              <div className="exposure-field">
+                <label>Show/hide window</label>
+                <ShortcutRecorder
+                  value={toggleShortcut}
+                  onSave={async (accelerator) => {
+                    const result = await api().window.setToggleShortcut(accelerator)
+                    if (!result.ok) throw new Error(result.error ?? 'Could not save this shortcut')
+                    setToggleShortcut(accelerator)
+                  }}
+                />
+              </div>
             </section>
           )}
 

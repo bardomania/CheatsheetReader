@@ -76,6 +76,24 @@ async function readJsonIfExists<T>(filePath: string): Promise<T | null> {
   }
 }
 
+export interface VariablesMeta {
+  order: string[]
+  presets: Record<string, string[]>
+}
+
+function variablesMetaFile(rootPath: string): string {
+  return join(configDir(rootPath), 'variables-meta.json')
+}
+
+export async function readVariablesMeta(rootPath: string): Promise<VariablesMeta> {
+  return (await readJsonIfExists<VariablesMeta>(variablesMetaFile(rootPath))) ?? { order: [], presets: {} }
+}
+
+export async function writeVariablesMeta(rootPath: string, meta: VariablesMeta): Promise<void> {
+  await ensureDir(configDir(rootPath))
+  await fs.writeFile(variablesMetaFile(rootPath), JSON.stringify(meta, null, 2), 'utf-8')
+}
+
 export async function readVariables(rootPath: string): Promise<Record<string, string>> {
   return (await readJsonIfExists<Record<string, string>>(variablesFile(rootPath))) ?? {}
 }

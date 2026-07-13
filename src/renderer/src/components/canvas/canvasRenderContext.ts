@@ -9,6 +9,9 @@ export interface CanvasRenderContextValue {
   variableValues: Record<string, string>
   onNavigate: (path: string) => void
   locked: boolean
+  editingNodeId: string | null
+  onStartEdit: (nodeId: string) => void
+  onStopEdit: () => void
 }
 
 // Shared by TextNode and CanvasFilePreview so neither needs every render

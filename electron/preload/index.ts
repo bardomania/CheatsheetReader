@@ -21,7 +21,12 @@ const api: ElectronApi = {
     listRecent: () => ipcRenderer.invoke(IPC.vault.listRecent),
     removeRecent: (path) => ipcRenderer.invoke(IPC.vault.removeRecent, path),
     saveSession: (vaultPath, session) => ipcRenderer.invoke(IPC.vault.saveSession, vaultPath, session),
-    getSession: (vaultPath) => ipcRenderer.invoke(IPC.vault.getSession, vaultPath)
+    getSession: (vaultPath) => ipcRenderer.invoke(IPC.vault.getSession, vaultPath),
+    onExternalChange: (callback) => {
+      const listener = (): void => callback()
+      ipcRenderer.on(IPC.vault.externalChange, listener)
+      return () => ipcRenderer.removeListener(IPC.vault.externalChange, listener)
+    }
   },
   trash: {
     list: (rootPath) => ipcRenderer.invoke(IPC.trash.list, rootPath),

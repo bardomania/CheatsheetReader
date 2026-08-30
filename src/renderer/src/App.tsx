@@ -412,6 +412,15 @@ export default function App() {
     setUsage(usage)
   }
 
+  // Changes made outside the app (git, another editor, a script) land on disk
+  // without going through our own create/rename/move/delete IPC calls, so the
+  // main process watches the vault root and pings us here to pick them up.
+  useEffect(() => {
+    if (!rootPath) return
+    return api().vault.onExternalChange(() => { refreshTree() })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootPath])
+
   async function refreshTrash(): Promise<void> {
     if (!rootPath) return
     setTrashEntries(await api().trash.list(rootPath))

@@ -15,7 +15,8 @@ export const IPC = {
     listRecent: 'vault:listRecent',
     removeRecent: 'vault:removeRecent',
     saveSession: 'vault:saveSession',
-    getSession: 'vault:getSession'
+    getSession: 'vault:getSession',
+    externalChange: 'vault:externalChange'
   },
   trash: {
     list: 'trash:list',
@@ -197,6 +198,7 @@ export interface ElectronApi {
     removeRecent: (path: string) => Promise<void>
     saveSession: (vaultPath: string, session: VaultSession) => Promise<void>
     getSession: (vaultPath: string) => Promise<VaultSession | null>
+    onExternalChange: (callback: () => void) => () => void
   }
   trash: {
     list: (rootPath: string) => Promise<TrashManifest[]>

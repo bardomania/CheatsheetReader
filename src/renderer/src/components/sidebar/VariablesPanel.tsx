@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useVariablesStore } from '../../state/variablesStore'
 import { useVaultStore } from '../../state/vaultStore'
 import { api } from '../../lib/ipc'
-import type { VariableContext } from '../../../../electron/main/shared-types'
+import type { VariableContext } from '../../../../../electron/main/shared-types'
 
 const NAME_RE = /^[a-zA-Z_]\w*$/
 

@@ -15,6 +15,7 @@ import {
   saveImage
 } from '../services/vaultService'
 import { updateRefs } from '../services/refUpdateService'
+import { startWatchingVault } from '../services/vaultWatcher'
 import { softDelete, listTrash, restoreFromTrash, purgeFromTrash } from '../services/trashService'
 import { listTemplates, getTemplateContent } from '../services/templateService'
 import { searchVault } from '../services/searchService'
@@ -72,8 +73,11 @@ export function registerVaultIpc(): void {
     return { path }
   })
 
-  ipcMain.handle(IPC.vault.getTree, async (_event, rootPath: string) => {
+  ipcMain.handle(IPC.vault.getTree, async (event, rootPath: string) => {
     setActiveVaultRoot(rootPath)
+    startWatchingVault(rootPath, () => {
+      if (!event.sender.isDestroyed()) event.sender.send(IPC.vault.externalChange)
+    })
     return getTree(rootPath)
   })
 

@@ -7,6 +7,7 @@ import { registerVaultAssetSchemePrivileges, registerVaultAssetProtocol } from '
 import { stopServer } from './services/httpServer/server'
 import { getGlobalToggleShortcut } from './services/appConfigStore'
 import { registerToggleShortcut, unregisterToggleShortcut } from './services/globalToggleShortcut'
+import { stopWatchingVault } from './services/vaultWatcher'
 
 registerVaultAssetSchemePrivileges()
 
@@ -44,5 +45,6 @@ if (!gotLock) {
   app.on('will-quit', () => {
     stopServer()
     unregisterToggleShortcut()
+    stopWatchingVault()
   })
 }
